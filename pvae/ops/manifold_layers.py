@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from torch.nn.parameter import Parameter
 from torch.nn import init
-from pvae.manifolds import PoincareBall, Euclidean
+from unsup_seg_vae.manifolds import PoincareBall, Euclidean
 from geoopt import ManifoldParameter
 
 
@@ -48,9 +48,10 @@ class GeodesicLayer(RiemannianLayer):
         super(GeodesicLayer, self).__init__(in_features, out_features, manifold, over_param, weight_norm)
 
     def forward(self, input):
-        input = input.unsqueeze(-2).expand(*input.shape[:-(len(input.shape) - 2)], self.out_features, self.in_features)
-        res = self.manifold.normdist2plane(input, self.bias, self.weight,
-                                               signed=True, norm=self.weight_norm)
+        input = input.unsqueeze(-2)
+        temp = input.shape[:-2]
+        input = input.expand(*temp, self.out_features, self.in_features)
+        res = self.manifold.normdist2plane(input, self.bias, self.weight, signed=True, norm=self.weight_norm)
         return res
 
 

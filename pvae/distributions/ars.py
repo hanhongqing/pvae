@@ -27,8 +27,6 @@ class ARS():
             to initialize the hulls
         use_lower: True means the lower sqeezing will be used; which is more efficient
                    for drawing large numbers of samples
-
-
         lb: lower bound of the domain
         ub: upper bound of the domain
         ns: maximum number of points defining the hulls

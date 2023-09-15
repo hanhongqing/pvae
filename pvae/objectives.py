@@ -1,45 +1,94 @@
 import torch
 import torch.distributions as dist
 from numpy import prod
-from pvae.utils import has_analytic_kl, log_mean_exp
+from unsup_seg_vae.utils import has_analytic_kl, log_mean_exp
 import torch.nn.functional as F
 
-def vae_objective(model, x, K=1, beta=1.0, components=False, analytical_kl=False, **kwargs):
-    """Computes E_{p(x)}[ELBO] """
-    qz_x, px_z, zs = model(x, K)
-    _, B, D = zs.size()
-    flat_rest = torch.Size([*px_z.batch_shape[:2], -1])
-    lpx_z = px_z.log_prob(x.expand(px_z.batch_shape)).view(flat_rest).sum(-1)
-
-    pz = model.pz(*model.pz_params)
-    kld = dist.kl_divergence(qz_x, pz).unsqueeze(0).sum(-1) if \
-        has_analytic_kl(type(qz_x), model.pz) and analytical_kl else \
-        qz_x.log_prob(zs).sum(-1) - pz.log_prob(zs).sum(-1)
-
-    obj = -lpx_z.mean(0).sum() + beta * kld.mean(0).sum()
-    return (qz_x, px_z, lpx_z, kld, obj) if components else obj
-
-def _iwae_objective_vec(model, x, K):
-    """Helper for IWAE estimate for log p_\theta(x) -- full vectorisation."""
-    qz_x, px_z, zs = model(x, K)
-    flat_rest = torch.Size([*px_z.batch_shape[:2], -1])
-    lpz = model.pz(*model.pz_params).log_prob(zs).sum(-1)
-    lpx_z = px_z.log_prob(x.expand(zs.size(0), *x.size())).view(flat_rest).sum(-1)
-    lqz_x = qz_x.log_prob(zs).sum(-1)
-    obj = lpz.squeeze(-1) + lpx_z.view(lpz.squeeze(-1).shape) - lqz_x.squeeze(-1)
-    return -log_mean_exp(obj).sum()
-
-
-def iwae_objective(model, x, K):
-    """Computes an importance-weighted ELBO estimate for log p_\theta(x)
-    Iterates over the batch as necessary.
-    Appropriate negation (for minimisation) happens in the helper
-    """
-    split_size = int(x.size(0) / (K * prod(x.size()) / (3e7)))  # rough heuristic
-    if split_size >= x.size(0):
-        obj = _iwae_objective_vec(model, x, K)
+def loss_func_ELBO(pz, x, qz_x, px_z, zs, args):
+    beta_c = args.kl_beta_c
+    beta_v = args.kl_beta_v
+    likelihood = args.likelihood
+    analytical_kl = args.kl_analytical
+    objective = args.ELBO_objective
+    nd = args.n_dim_latent_metric
+    S = zs.shape[0]
+    B = zs.shape[1]
+    x_expanded = x.unsqueeze(0).expand(S,*x.shape)
+    # lpx_z
+    lpx_z = px_z.log_prob(x_expanded).view(S,B,-1)#.mean(-1)
+    # kl divergence
+    if has_analytic_kl(type(qz_x), type(pz)) and analytical_kl:
+        kld = dist.kl_divergence(qz_x, pz).unsqueeze(0).expand(S,B,-1)#.mean(-1) #or .sum(-1)
     else:
-        obj = 0
-        for bx in x.split(split_size):
-            obj = obj + _iwae_objective_vec(model, bx, K)
+        lpz = pz.log_prob(zs)
+        lqz_x = qz_x.log_prob(zs)
+        kld = lqz_x - lpz
+    # obj
+    if objective=='IWAE':
+        obj = -log_mean_exp(lpx_z.view(kld.squeeze(-1).shape) - kld.squeeze(-1)).sum()
+    elif objective=='VAE':
+        l = kld.shape[2]
+        temp =  kld.mean(0).mean(0)
+        obj = -lpx_z.mean().mean().mean() + (beta_c*temp[:nd].sum()+beta_v*temp[nd:].sum())/l
+    else:
+        raise NotImplementedError
     return obj
+
+def kl(mu_0,var_0,mu_1,var_1):
+    loss_temp = 0.5*(var_1+(mu_1-mu_0)**2)/var_0 - 0.5 + torch.log(var_0/var_1)
+    loss = loss_temp.mean()
+    return loss
+
+def loss_func_metric(qz_x_anc,qz_x_pos,args):
+    objective_metric = args.metric_objective
+    margin = args.metric_margin
+    nd = args.n_dim_latent_metric
+    #shapes: (bs,dim_z) (bs,dim_z,dim_z) (bs,dim_z)
+    n_rep = len(qz_x_pos)
+    bs,dim_z = qz_x_anc.loc.shape
+    mu_anc = qz_x_anc.loc
+    cov_anc = qz_x_anc.covariance_matrix
+    var_anc = torch.diagonal(cov_anc, dim1=1, dim2=2)
+    mu_anc_c = mu_anc[:,:nd]
+    mu_anc_v = mu_anc[:,nd:]
+    var_anc_c = var_anc[:,:nd]
+    var_anc_v = var_anc[:,nd:]
+    mu_pos  = torch.zeros(n_rep,bs,dim_z).to(mu_anc.device)
+    var_pos = torch.zeros(n_rep,bs,dim_z).to(var_anc.device)
+    mu_pos_c  = torch.zeros(n_rep,bs,nd).to(mu_anc.device)
+    var_pos_c = torch.zeros(n_rep,bs,nd).to(var_anc.device)
+    mu_pos_v  = torch.zeros(n_rep,bs,dim_z-nd).to(mu_anc.device)
+    var_pos_v = torch.zeros(n_rep,bs,dim_z-nd).to(var_anc.device)
+    for r in range(n_rep):
+        mu_pos[ r] = qz_x_pos[r].loc
+        var_pos[r] = torch.diagonal(qz_x_pos[r].covariance_matrix, dim1=1, dim2=2)
+        mu_pos_c[ r] = mu_pos[ r][:,:nd]
+        var_pos_c[r] = var_pos[r][:,:nd]
+        mu_pos_v[ r] = mu_pos[ r][:,nd:]
+        var_pos_v[r] = var_pos[r][:,nd:]
+    ##
+    mu_all_c  = torch.cat((mu_anc_c.unsqueeze( 0),mu_pos_c ),0)
+    temp0 = mu_all_c.unsqueeze(-2).unsqueeze(-2).expand(1+n_rep, bs, 1+n_rep, bs, nd)
+    temp1 = mu_all_c.unsqueeze( 0).unsqueeze( 0).expand(1+n_rep, bs, 1+n_rep, bs, nd)
+    dist = torch.norm(temp0 - temp1,dim=4)
+    del temp0
+    del temp1
+    loss = 0.0
+    alpha = 1.0
+    beta  = 1.0
+    for i in range(bs):
+        batch_idx = torch.cat((torch.arange(0,i),torch.arange(i+1,bs))).type('torch.LongTensor')
+        for a in range(1+n_rep):
+            rep_idx = torch.cat((torch.arange(0,a),torch.arange(a+1,1+n_rep))).type('torch.LongTensor')
+            loss += 1.0 / alpha * torch.logsumexp( alpha * (torch.cat((torch.flatten(dist[a,i,rep_idx,i        ]),torch.tensor([margin],device=dist.device))) - margin) ,dim=0)
+            loss += 1.0 / beta  * torch.logsumexp( -beta * (torch.cat((torch.flatten(dist[a,i,:      ,batch_idx]),torch.tensor([margin],device=dist.device))) - margin) ,dim=0)
+    loss = loss / (bs*(n_rep+1))
+
+    return loss
+
+
+
+
+
+
+

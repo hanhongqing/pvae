@@ -2,8 +2,8 @@ import torch
 import torch.distributions as dist
 from torch.distributions import constraints
 from numbers import Number
-from pvae.distributions.hyperbolic_radius import HyperbolicRadius
-from pvae.distributions.hyperspherical_uniform import HypersphericalUniform
+from .hyperbolic_radius import HyperbolicRadius
+from .hyperspherical_uniform import HypersphericalUniform
 
 
 class RiemannianNormal(dist.Distribution):

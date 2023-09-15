@@ -1,0 +1,26 @@
+PATH_INPUT_BETASEG_HIGH_C1="/path/to/dataset/BetaSeg/high_c1/high_c1_source.tif"
+PATH_INPUT_BETASEG_HIGH_C2="/path/to/dataset/BetaSeg/high_c2/high_c2_source.tif"
+PATH_INPUT_BETASEG_HIGH_C3="/path/to/dataset/BetaSeg/high_c3/high_c3_source.tif"
+PATH_INPUT_BETASEG_HIGH_C4="/path/to/dataset/BetaSeg/high_c4/high_c4_source.tif"
+PATH_INPUT_BETASEG_LOW_C1="/path/to/dataset/BetaSeg/low_c1/low_c1_source.tif"
+PATH_INPUT_BETASEG_LOW_C2="/path/to/dataset/BetaSeg/low_c2/low_c2_source.tif"
+PATH_INPUT_BETASEG_LOW_C3="/path/to/dataset/BetaSeg/low_c3/low_c3_source.tif"
+PATH_OUTPUT="./output/result"
+PATH_REPRESENTATION="./working/representation"
+PATH_MODEL="./working/state_dict_model.pt"
+PATH_LOSS_PLOT="./working/loss.pdf"
+PATH_LOSS_TEXT="./working/loss.csv"
+PATH_POSTERIOR_TEXT="./working/posterior"
+PATH_POSTERIOR_PLOT="./working/posterior.pdf"
+SUFFIX_CELL='membrane_full_mask'
+# confidence from high to low
+SUFFIX1='centrioles'
+SUFFIX2='nucleus_mask'
+SUFFIX3='membrane_mask'
+SUFFIX4='microtubules'
+SUFFIX5='golgi_corrected'
+SUFFIX6='granules'
+SUFFIX7='mitochondria_mask'
+
+N_TRAIN_CROSSVAL="2000000 2000000"
+N_TRAIN_TEST="2000000 2000000 2000000"

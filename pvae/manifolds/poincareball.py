@@ -1,6 +1,6 @@
 import torch
 from geoopt.manifolds import PoincareBall as PoincareBallParent
-from geoopt.manifolds.poincare.math import _lambda_x, arsinh, tanh
+from geoopt.manifolds.stereographic.math import _lambda_x, arsinh, tanh
 
 MIN_NORM = 1e-15
 
@@ -81,3 +81,9 @@ class PoincareBallExact(PoincareBall):
 
     def extra_repr(self):
         return "exact"
+
+
+
+
+
+
